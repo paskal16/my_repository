@@ -1,1 +1,5 @@
-# my_repositary
+# my_repository
+
+Паскал Иван
+Менеджер
+да
