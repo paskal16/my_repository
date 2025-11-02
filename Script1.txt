@@ -1,0 +1,91 @@
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    role TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE users_audit (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,
+    field_changed TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    changed_by TEXT, 
+    changed_at TIMESTAMP DEFAULT NOW()
+);
+
+
+CREATE OR REPLACE FUNCTION fun_log()
+RETURNS TRIGGER AS $$
+DECLARE
+BEGIN 
+    IF NEW.name IS DISTINCT FROM OLD.name THEN
+        INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+        VALUES (OLD.id, 'name', OLD.name, NEW.name, current_user);
+    END IF;
+
+    IF NEW.email IS DISTINCT FROM OLD.email THEN
+        INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+        VALUES (OLD.id, 'email', OLD.email, NEW.email, current_user);
+    END IF;
+    
+    IF NEW.role IS DISTINCT FROM OLD.role THEN
+        INSERT INTO users_audit(user_id, field_changed, old_value, new_value, changed_by)
+        VALUES (OLD.id, 'role', OLD.role, NEW.role, current_user);
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+create trigger trigger_log_user_update
+before update on users
+for each row 
+execute function fun_log();
+
+
+CREATE extension if not exists pg_cron;
+
+create or replace function export_audit_to_csv() returns void as $outer$
+declare 
+	path text := '/tmp/users_audit_export_' || to_char(now(), 'YYYYMMDD_HH24MI') || '.csv';
+begin 
+	execute format(
+	$inner$
+	copy (
+		select user_id, field_changed, old_value, new_value, hanged_by, changed_at
+		from users_audit
+		where changed_at >= NOW() - interval '1 day'
+		order by changed_at
+		) to '%s' with csv header 
+		$inner$, path 
+	);
+end;
+$outer$ language plpgsql;
+
+select cron.schedule(
+	job_name := 'daily_audit_export',
+	schedule := '0 3 * * *',
+	command := $$SELECT export_audit_to_csv();$$
+);
+
+select * from cron.job;
+
+insert into users (name, email, role)
+values('Pascal Ivan', 'vania.paskal2001@gmail.com', 'owner'), 
+('Petrov Misha', 'petrov123@mail.ru', 'autor');
+
+update users 
+set email = 'new1_email_w.ru'
+where name = 'Petrov Misha';
+
+
+select * from users;
+select * from users_audit;
+
+select export_audit_to_csv();
