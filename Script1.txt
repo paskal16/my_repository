@@ -58,7 +58,7 @@ begin
 	execute format(
 	$inner$
 	copy (
-		select user_id, field_changed, old_value, new_value, hanged_by, changed_at
+		select user_id, field_changed, old_value, new_value, changed_by, changed_at
 		from users_audit
 		where changed_at >= NOW() - interval '1 day'
 		order by changed_at
